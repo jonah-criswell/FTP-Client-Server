@@ -43,8 +43,8 @@ public class myftpserver {
             try { socket.close(); } catch (IOException ignored) {}
         }
     }
-}
-public String currentDirectory;
+
+    public String currentDirectory;
 
 currentDirectory = System.getProperty("user.dir");
 
@@ -112,4 +112,5 @@ public void doMkdir(String newDirName) throws IOException {
     } else {
         //Write error message to client, mkdir failed
     }
+}
 }
