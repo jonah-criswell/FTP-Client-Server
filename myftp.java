@@ -26,8 +26,8 @@ public class myftp {
 
                 
 
-                String response = in.readLine();
-                System.out.println(response);
+                    String response = in.readLine();
+                    System.out.println(response);
                 if (command.equalsIgnoreCase("quit")) {
                     break;
                 }

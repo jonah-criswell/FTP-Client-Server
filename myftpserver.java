@@ -3,30 +3,30 @@ import java.net.*;
 
 public class myftpserver {
 
-   public static void main(String[] args) {
+    public static void main(String[] args) {
         if (args.length < 1) {
             System.out.println("Usage: java myftpserver <port>");
             return;
         }
 
-      final int PORT = Integer.parseInt(args[0]);
+        final int PORT = Integer.parseInt(args[0]);
 
-      try (ServerSocket serverSocket = new ServerSocket(PORT)) {
-         System.out.println("FTP Server is running on port " + PORT);
+        try (ServerSocket serverSocket = new ServerSocket(PORT)) {
+            System.out.println("FTP Server is running on port " + PORT);
 
-         while (true) {
-            System.out.println("Active threads: " + Thread.activeCount());
+            while (true) {
+                System.out.println("Active threads: " + Thread.activeCount());
                 
-            Socket clientSocket = serverSocket.accept();
-            System.out.println("New client connected: " + clientSocket.getInetAddress().getHostAddress());
+                Socket clientSocket = serverSocket.accept();
+                System.out.println("New client connected: " + clientSocket.getInetAddress().getHostAddress());
                 
                 
                 new Thread(new ClientHandler(clientSocket)).start();
-         }
-      } catch (IOException e) {
-         e.printStackTrace();
-      }
-   }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 }
 
 class ClientHandler implements Runnable {
@@ -50,9 +50,9 @@ class ClientHandler implements Runnable {
                 String[] localargs = inputLine.split(" "); //Allows us to parse commands with arguments
                 String command = localargs[0].toLowerCase();
 
-               if (command.equalsIgnoreCase("quit")) {
+                if (command.equalsIgnoreCase("quit")) {
                     break;
-               }
+                }
 
                 //Available commands
                 switch (command) {
@@ -72,8 +72,6 @@ class ClientHandler implements Runnable {
             try { socket.close(); } catch (IOException ignored) {}
         }
     }
-
-
     // get (double check)
     private void get(String[] parts) throws IOException {
         File src = new File(cwd, parts[1]).getCanonicalFile();
@@ -97,20 +95,20 @@ class ClientHandler implements Runnable {
     }
 
     //LS appends filenames and prints them out
-    
+
     private void doLs(PrintWriter out) throws IOException {
         File currentFile = new File(cwd.getAbsolutePath());
-    File[] fileList = currentFile.listFiles();
+        File[] fileList = currentFile.listFiles();
 
-    StringBuilder serverResponse = new StringBuilder();
-    if (fileList != null && fileList.length > 0) {
-        for (File file : fileList) {
+        StringBuilder serverResponse = new StringBuilder();
+        if (fileList != null && fileList.length > 0) {
+            for (File file : fileList) {
                 serverResponse.append(file.getName()).append("  ");
-        }
+            }
             out.println(serverResponse.toString());
-    } else {
+        } else {
             out.println("Directory is empty.");
-    }
+        }
     }
 
     private void doPwd(PrintWriter out) throws IOException {
@@ -128,29 +126,29 @@ class ClientHandler implements Runnable {
             File parentDir = cwd.getParentFile();
             newDir = (parentDir != null) ? parentDir : cwd;
         } else if (requestedDir.equals(".")) {
-        return;
-    } else {
+            return;
+        } else {
             newDir = new File(cwd, requestedDir);
         }
         //Changes current directory
         if (newDir.exists() && newDir.isDirectory()) {
             cwd = newDir.getCanonicalFile();
             out.println("Changed directory to " + cwd.getAbsolutePath());
-    } else {
+        } else {
             out.println("Error: Directory not found");
+        }
     }
-}
 
     private void doMkdir(String newDirName, PrintWriter out) throws IOException {
-    File newDir = new File(cwd, newDirName);
-    if (newDir.exists()) {
+        File newDir = new File(cwd, newDirName);
+        if (newDir.exists()) {
             out.println("Error: Directory already exists");
         } else if (newDir.mkdir()) {
             out.println("Directory created successfully");
-    } else {
+        } else {
             out.println("Error: Failed to create directory");
+        }
     }
-}
 
     private void doDelete(String filename, PrintWriter out) throws IOException {
         File file = new File(cwd, filename).getCanonicalFile();
@@ -158,8 +156,8 @@ class ClientHandler implements Runnable {
             out.println("File deleted: " + file.getAbsolutePath());
         } else {
             out.println("Error: File not found or delete failed");
-            }
         }
+    }
 
     private void put(String[] parts) throws IOException {
         File dst = new File(cwd, parts[1]).getCanonicalFile();
@@ -171,11 +169,11 @@ class ClientHandler implements Runnable {
         InputStream in = socket.getInputStream();
         OutputStream out = new BufferedOutputStream(new FileOutputStream(dst));
 
-        byte[] buf = new byte[8192];
-        int n;
+            byte[] buf = new byte[8192];
+            int n;
         while ((n = in.read(buf)) != -1) {
             out.write(buf, 0, n);
-        }
+            }
         out.flush();
         out.close();
         
