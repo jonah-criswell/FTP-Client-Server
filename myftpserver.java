@@ -73,25 +73,27 @@ class ClientHandler implements Runnable {
         }
     }
     // get (double check)
-    private void get(String[] parts) throws IOException {
+    private void get(String[] parts, PrintWriter out) throws IOException {
+        if (parts.length < 2) {
+            out.println("Error: Usage - get <filename>");
+            return;
+        }
         File src = new File(cwd, parts[1]).getCanonicalFile();
         if (!src.exists() || !src.isFile()) {
-            System.out.println("File not found");
+            out.println("File not found");
             return;
         }
 
-        InputStream in = new BufferedInputStream(new FileInputStream(src));
-        OutputStream out = socket.getOutputStream();
-        
-        byte[] buf = new byte[8129];
-        int n;
-        while ((n = in.read(buf)) != -1) {
-            out.write(buf, 0, n);
-
+        try (InputStream in = new BufferedInputStream(new FileInputStream(src))) {
+            OutputStream outStream = socket.getOutputStream();
+            
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) != -1) {
+                outStream.write(buf, 0, n);
+            }
+            outStream.flush();
         }
-        out.flush();
-        in.close();
-        
     }
 
     //LS appends filenames and prints them out
@@ -159,26 +161,28 @@ class ClientHandler implements Runnable {
         }
     }
 
-    private void put(String[] parts) throws IOException {
+    private void put(String[] parts, BufferedReader in, PrintWriter out) throws IOException {
+        if (parts.length < 2) {
+            out.println("Error: Usage - put <filename>");
+            return;
+        }
         File dst = new File(cwd, parts[1]).getCanonicalFile();
         if (dst.exists()) {
             System.out.println("File already exists");
             return;
         }
 
-        InputStream in = socket.getInputStream();
-        OutputStream out = new BufferedOutputStream(new FileOutputStream(dst));
+        InputStream inSocket = socket.getInputStream();
+        OutputStream fileOut = new BufferedOutputStream(new FileOutputStream(dst));
 
             byte[] buf = new byte[8192];
             int n;
-        while ((n = in.read(buf)) != -1) {
-            out.write(buf, 0, n);
+        while ((n = inSocket.read(buf)) != -1) {
+            fileOut.write(buf, 0, n);
             }
-        out.flush();
-        out.close();
-        
-
+            fileOut.flush();
+        }
+       
     }
 
-}
 
