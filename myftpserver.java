@@ -3,10 +3,12 @@ import java.net.*;
 
 public class myftpserver {
 
-    private File cwd;
-    private File localDir;
-
    public static void main(String[] args) {
+        if (args.length < 1) {
+            System.out.println("Usage: java myftpserver <port>");
+            return;
+        }
+
       final int PORT = Integer.parseInt(args[0]);
 
       try (ServerSocket serverSocket = new ServerSocket(PORT)) {
@@ -14,37 +16,56 @@ public class myftpserver {
 
          while (true) {
             System.out.println("Active threads: " + Thread.activeCount());
+                
             Socket clientSocket = serverSocket.accept();
             System.out.println("New client connected: " + clientSocket.getInetAddress().getHostAddress());
-            new Thread(() -> handleClient(clientSocket)).start();
+                
+                
+                new Thread(new ClientHandler(clientSocket)).start();
          }
       } catch (IOException e) {
          e.printStackTrace();
       }
    }
+}
 
-   private static void handleClient(Socket socket) {
+class ClientHandler implements Runnable {
+    private Socket socket;
+    private File cwd;
+
+    public ClientHandler(Socket socket) {
+        this.socket = socket;
+        // Initialize CWD where the server is running
+        this.cwd = new File(System.getProperty("user.dir"));
+    }
+
+    @Override
+    public void run() {
         try (
-            BufferedReader in = new BufferedReader(
-                new InputStreamReader(socket.getInputStream())
-            );
-            PrintWriter out = new PrintWriter(
-                socket.getOutputStream(), true
-            )
+            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            PrintWriter out = new PrintWriter(socket.getOutputStream(), true)
         ) {
-            String command;
-            while ((command = in.readLine()) != null) {
+            String inputLine;
+            while ((inputLine = in.readLine()) != null) {
+                String[] localargs = inputLine.split(" "); //Allows us to parse commands with arguments
+                String command = localargs[0].toLowerCase();
+
                if (command.equalsIgnoreCase("quit")) {
-                    out.println("Goodbye");
                     break;
                }
 
-                // For now, just echo
-                out.println("Server received: " + command);
+                //Available commands
+                switch (command) {
+                    case "ls":     doLs(out); break;
+                    case "pwd":    doPwd(out); break;
+                    case "cd":     doCd(localargs.length > 1 ? localargs[1] : "", out); break;
+                    case "mkdir":  doMkdir(localargs.length > 1 ? localargs[1] : "", out); break;
+                    case "delete": doDelete(localargs.length > 1 ? localargs[1] : "", out); break;
+                    case "get":    get(localargs, out); break;
+                    case "put":    put(localargs, in, out); break;
+                    default:       out.println("Not a command: " + inputLine); break;
+                }
             }
-
-
-
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
@@ -75,97 +96,70 @@ public class myftpserver {
         
     }
 
-
-
-// ls
-public void doLs() throws IOException {
+    //LS appends filenames and prints them out
     
-
-    File currentFile = new File(cwd);
+    private void doLs(PrintWriter out) throws IOException {
+        File currentFile = new File(cwd.getAbsolutePath());
     File[] fileList = currentFile.listFiles();
 
     StringBuilder serverResponse = new StringBuilder();
     if (fileList != null && fileList.length > 0) {
         for (File file : fileList) {
-            serverResponse.append(file.getName()).append("\n");
+                serverResponse.append(file.getName()).append("  ");
         }
+            out.println(serverResponse.toString());
     } else {
-        serverResponse.append("Directory is empty.\n");
+            out.println("Directory is empty.");
+    }
     }
 
-    //Write response to client with DataOutputStream
-}
+    private void doPwd(PrintWriter out) throws IOException {
+        out.println(cwd.getCanonicalPath());
+    }
 
-// cd
-public void doCd(String requestedDir) throws IOException {
-    File newDir; //Save path for processing
-
-    //Handle movement to Parent Directory
-    if (requestedDir.equals("..")) {
-        File tempDir = new File(cwd); //Get current directory as file object
-        File parentDir = tempDir.getParentFile();
-
-        //If parent is null, we are at root
-        if (parentDir == null) {
-            //TODO WRITE ERROR MESSAGE TO CLIENT
+    private void doCd(String requestedDir, PrintWriter out) throws IOException {
+        if (requestedDir.isEmpty()) {
+            out.println("Usage: cd <dir>");
             return;
         }
-        //Wanted to check it before setting the real one
-         newDir = parentDir;
 
-    } else if (requestedDir.equals(".")) { //Could be redundant
-        //Return the same directory to user. No change server side.
+        File newDir;
+        if (requestedDir.equals("..")) {
+            File parentDir = cwd.getParentFile();
+            newDir = (parentDir != null) ? parentDir : cwd;
+        } else if (requestedDir.equals(".")) {
         return;
     } else {
-        newDir = new File(cwd,requestedDir); //Change to requested directory
-    }
-
-    //Error Checking the new directory
-    if (!newDir.exists() || !newDir.isDirectory()) {
-        //TODO WRITE ERROR MESSAGE TO CLIENT, dir not found
-        return;
+            newDir = new File(cwd, requestedDir);
+        }
+        //Changes current directory
+        if (newDir.exists() && newDir.isDirectory()) {
+            cwd = newDir.getCanonicalFile();
+            out.println("Changed directory to " + cwd.getAbsolutePath());
     } else {
-        //newDir = newDir.getCanonicalPath();
-        cwd = newDir.getCanonicalPath(); //Returns string, must put it here instead of the file object
-        //TODO WRITE SUCCESS MESSAGE TO CLIENT
+            out.println("Error: Directory not found");
     }
 }
 
-// mkdir
-public void doMkdir(String newDirName) throws IOException {
+    private void doMkdir(String newDirName, PrintWriter out) throws IOException {
     File newDir = new File(cwd, newDirName);
-
     if (newDir.exists()) {
-        //Write error message to client, dir is already there
-        return;
-    }
-
-    boolean mkdirbool = newDir.mkdir();
-    if (mkdirbool) {
-        //Write success message to client
+            out.println("Error: Directory already exists");
+        } else if (newDir.mkdir()) {
+            out.println("Directory created successfully");
     } else {
-        //Write error message to client, mkdir failed
+            out.println("Error: Failed to create directory");
     }
 }
 
-
-    public void doDelete(String filename) throws IOException {
+    private void doDelete(String filename, PrintWriter out) throws IOException {
         File file = new File(cwd, filename).getCanonicalFile();
-
-        if (!file.exists()) {
-            System.out.println("File not found");
-            return;
+        if (file.exists() && file.delete()) {
+            out.println("File deleted: " + file.getAbsolutePath());
         } else {
-            boolean deleted = file.delete();
-            if (deleted) {
-                System.out.println("File deleted: " + file.getAbsolutePath());
-            } else {
-                System.out.println("Failed to delete file: " + file.getAbsolutePath());
+            out.println("Error: File not found or delete failed");
             }
         }
-
-    }
-
 
     private void put(String[] parts) throws IOException {
         File dst = new File(cwd, parts[1]).getCanonicalFile();

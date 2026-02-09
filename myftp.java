@@ -3,8 +3,11 @@ import java.net.*;
 import java.util.Scanner;
 
 public class myftp {
-
     public static void main(String[] args) {
+        if (args.length < 2) {
+            System.out.println("Usage: java myftp <host> <port>");
+            return;
+        }
         String host = args[0];
         int port = Integer.parseInt(args[1]);
 
