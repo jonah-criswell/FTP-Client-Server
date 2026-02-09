@@ -4,7 +4,7 @@ import java.net.*;
 public class myftpserver {
 
     private File cwd;
-   private File localDir;
+    private File localDir;
 
    public static void main(String[] args) {
       final int PORT = Integer.parseInt(args[0]);
@@ -22,6 +22,7 @@ public class myftpserver {
          e.printStackTrace();
       }
    }
+
    private static void handleClient(Socket socket) {
         try (
             BufferedReader in = new BufferedReader(
@@ -52,48 +53,34 @@ public class myftpserver {
     }
 
 
+    // get (double check)
+    private void get(String[] parts) throws IOException {
+        File src = new File(cwd, parts[1]).getCanonicalFile();
+        if (!src.exists() || !src.isFile()) {
+            System.out.println("File not found");
+            return;
+        }
 
-   private void get(String[] parts) throws IOException {
-    if (parts.length != 2) throw new IOException("Usage: get <filename>");
+        InputStream in = new BufferedInputStream(new FileInputStream(src));
+        OutputStream out = socket.getOutputStream();
+        
+        byte[] buf = new byte[8129];
+        int n;
+        while ((n = in.read(buf)) != -1) {
+            out.write(buf, 0, n);
 
-    String filename = parts[1];
-    File src = new File(cwd, filename).getCanonicalFile();
-
-    if (!src.exists() || !src.isFile()) {
-      throw new IOException("File not found: " + src.getPath());
+        }
+        out.flush();
+        in.close();
+        
     }
 
-    if (!localDir.exists()) {
-      boolean ok = localDir.mkdirs();
-      if (!ok) throw new IOException("Failed to create downloads directory: " + localDir.getPath());
-    }
 
-    File dst = new File(localDir, filename).getCanonicalFile();
-    copyFileIO(src, dst);
 
-    System.out.println("OK saved to: " + dst.getPath());
-    }
-
-    private void copyFileIO(File src, File dst) throws IOException {
-    if (dst.exists() && !dst.delete()) {
-    if (dst.exists() && !dst.delete()) {
-      throw new IOException("Cannot overwrite: " + dst.getPath());
-    }
-
-    try (InputStream in = new BufferedInputStream(new FileInputStream(src));
-         OutputStream out = new BufferedOutputStream(new FileOutputStream(dst))) {
-
-      byte[] buf = new byte[8192];
-      int n;
-      while ((n = in.read(buf)) != -1) {
-        out.write(buf, 0, n);
-      }
-      out.flush();
-    }
-  }
-}
-
+// ls
 public void doLs() throws IOException {
+    
+
     File currentFile = new File(cwd);
     File[] fileList = currentFile.listFiles();
 
@@ -109,12 +96,13 @@ public void doLs() throws IOException {
     //Write response to client with DataOutputStream
 }
 
+// cd
 public void doCd(String requestedDir) throws IOException {
     File newDir; //Save path for processing
 
     //Handle movement to Parent Directory
     if (requestedDir.equals("..")) {
-        File tempDir = new File(cwd);
+        File tempDir = new File(cwd); //Get current directory as file object
         File parentDir = tempDir.getParentFile();
 
         //If parent is null, we are at root
@@ -125,7 +113,7 @@ public void doCd(String requestedDir) throws IOException {
         //Wanted to check it before setting the real one
          newDir = parentDir;
 
-    } else if (requestedDir.equals(".") { //Could be redundant
+    } else if (requestedDir.equals(".")) { //Could be redundant
         //Return the same directory to user. No change server side.
         return;
     } else {
@@ -143,6 +131,7 @@ public void doCd(String requestedDir) throws IOException {
     }
 }
 
+// mkdir
 public void doMkdir(String newDirName) throws IOException {
     File newDir = new File(cwd, newDirName);
 
@@ -159,4 +148,45 @@ public void doMkdir(String newDirName) throws IOException {
     }
 }
 
+
+    public void doDelete(String filename) throws IOException {
+        File file = new File(cwd, filename).getCanonicalFile();
+
+        if (!file.exists()) {
+            System.out.println("File not found");
+            return;
+        } else {
+            boolean deleted = file.delete();
+            if (deleted) {
+                System.out.println("File deleted: " + file.getAbsolutePath());
+            } else {
+                System.out.println("Failed to delete file: " + file.getAbsolutePath());
+            }
+        }
+
+    }
+
+
+    private void put(String[] parts) throws IOException {
+        File dst = new File(cwd, parts[1]).getCanonicalFile();
+        if (dst.exists()) {
+            System.out.println("File already exists");
+            return;
+        }
+
+        InputStream in = socket.getInputStream();
+        OutputStream out = new BufferedOutputStream(new FileOutputStream(dst));
+
+        byte[] buf = new byte[8192];
+        int n;
+        while ((n = in.read(buf)) != -1) {
+            out.write(buf, 0, n);
+        }
+        out.flush();
+        out.close();
+        
+
+    }
+
 }
+
