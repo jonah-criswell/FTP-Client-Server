@@ -74,6 +74,8 @@ public class myftp {
                         case "get": {                        
                         
                             if (!response.startsWith("OK ")) {
+                                System.out.println("Server error: " + response); 
+                                System.out.print("myftp> ");
                                 break;
                             }
 
