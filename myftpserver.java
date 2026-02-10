@@ -42,11 +42,15 @@ class ClientHandler implements Runnable {
     @Override
     public void run() {
         try (
-            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            PrintWriter out = new PrintWriter(socket.getOutputStream(), true)
+            InputStream in = socket.getInputStream();
+            OutputStream out = socket.getOutputStream();           
+
+           InputStream byteIn = new BufferedInputStream(in);
+           OutputStream byteOut = new BufferedOutputStream(out);
         ) {
             String inputLine;
-            while ((inputLine = in.readLine()) != null) {
+
+            while ((inputLine = readLine(byteIn)) != null) {
                 String[] localargs = inputLine.split(" "); //Allows us to parse commands with arguments
                 String command = localargs[0].toLowerCase();
 
@@ -56,14 +60,14 @@ class ClientHandler implements Runnable {
 
                 //Available commands
                 switch (command) {
-                    case "ls":     doLs(out); break;
-                    case "pwd":    doPwd(out); break;
-                    case "cd":     doCd(localargs.length > 1 ? localargs[1] : "", out); break;
-                    case "mkdir":  doMkdir(localargs.length > 1 ? localargs[1] : "", out); break;
-                    case "delete": doDelete(localargs.length > 1 ? localargs[1] : "", out); break;
-                    case "get":    get(localargs, out); break;
-                    case "put":    put(localargs, in, out); break;
-                    default:       out.println("Not a command: " + inputLine); break;
+                    case "ls":     doLs(byteOut); break;
+                    case "pwd":    doPwd(byteOut); break;
+                    case "cd":     doCd(localargs.length > 1 ? localargs[1] : "", byteOut); break;
+                    case "mkdir":  doMkdir(localargs.length > 1 ? localargs[1] : "", byteOut); break;
+                    case "delete": doDelete(localargs.length > 1 ? localargs[1] : "", byteOut); break;
+                    case "get":    get(localargs, byteOut); break;
+                    case "put":    put(localargs, byteIn, byteOut); break;
+                    default:       writeLine(byteOut, "Not a command: " + inputLine); break;
                 }
             }
         } catch (IOException e) {
@@ -72,33 +76,39 @@ class ClientHandler implements Runnable {
             try { socket.close(); } catch (IOException ignored) {}
         }
     }
+
+
     // get (double check)
-    private void get(String[] parts, PrintWriter out) throws IOException {
+    private void get(String[] parts, OutputStream byteOut) throws IOException {
         if (parts.length < 2) {
-            out.println("Error: Usage - get <filename>");
-            return;
-        }
-        File src = new File(cwd, parts[1]).getCanonicalFile();
-        if (!src.exists() || !src.isFile()) {
-            out.println("File not found");
+            writeLine(byteOut, "Error: Usage - get <filename>");
             return;
         }
 
-        try (InputStream in = new BufferedInputStream(new FileInputStream(src))) {
-            OutputStream outStream = socket.getOutputStream();
-            
+        File src = new File(cwd, parts[1]).getCanonicalFile();
+
+        if (!src.exists() || !src.isFile()) {
+            writeLine(byteOut, "File not found");
+            return;
+        }
+        
+        long size = src.length();
+        writeLine(byteOut, "OK " + size);
+
+        try (InputStream fileIn = new BufferedInputStream(new FileInputStream(src))) {
             byte[] buf = new byte[8192];
             int n;
-            while ((n = in.read(buf)) != -1) {
-                outStream.write(buf, 0, n);
+            while ((n = fileIn.read(buf)) != -1) {
+                byteOut.write(buf, 0, n);   
             }
-            outStream.flush();
+            byteOut.flush();
         }
+        
     }
 
     //LS appends filenames and prints them out
 
-    private void doLs(PrintWriter out) throws IOException {
+    private void doLs(OutputStream out) throws IOException {
         File currentFile = new File(cwd.getAbsolutePath());
         File[] fileList = currentFile.listFiles();
 
@@ -107,19 +117,19 @@ class ClientHandler implements Runnable {
             for (File file : fileList) {
                 serverResponse.append(file.getName()).append("  ");
             }
-            out.println(serverResponse.toString());
+            writeLine(out, serverResponse.toString());
         } else {
-            out.println("Directory is empty.");
+            writeLine(out, "Directory is empty.");
         }
     }
 
-    private void doPwd(PrintWriter out) throws IOException {
-        out.println(cwd.getCanonicalPath());
+    private void doPwd(OutputStream out) throws IOException {
+        writeLine(out, cwd.getCanonicalPath());
     }
 
-    private void doCd(String requestedDir, PrintWriter out) throws IOException {
+    private void doCd(String requestedDir, OutputStream out) throws IOException {
         if (requestedDir.isEmpty()) {
-            out.println("Usage: cd <dir>");
+            writeLine(out, "Usage: cd <dir>");
             return;
         }
 
@@ -135,54 +145,93 @@ class ClientHandler implements Runnable {
         //Changes current directory
         if (newDir.exists() && newDir.isDirectory()) {
             cwd = newDir.getCanonicalFile();
-            out.println("Changed directory to " + cwd.getAbsolutePath());
+            writeLine(out, "Changed directory to " + cwd.getAbsolutePath());
         } else {
-            out.println("Error: Directory not found");
+            writeLine(out, "Error: Directory not found");
         }
     }
 
-    private void doMkdir(String newDirName, PrintWriter out) throws IOException {
+    private void doMkdir(String newDirName, OutputStream out) throws IOException {
         File newDir = new File(cwd, newDirName);
         if (newDir.exists()) {
-            out.println("Error: Directory already exists");
+            writeLine(out, "Error: Directory already exists");
         } else if (newDir.mkdir()) {
-            out.println("Directory created successfully");
+            writeLine(out,  "Directory created successfully");
         } else {
-            out.println("Error: Failed to create directory");
+            writeLine(out, "Error: Failed to create directory");
         }
     }
 
-    private void doDelete(String filename, PrintWriter out) throws IOException {
+    private void doDelete(String filename, OutputStream out) throws IOException {
         File file = new File(cwd, filename).getCanonicalFile();
         if (file.exists() && file.delete()) {
-            out.println("File deleted: " + file.getAbsolutePath());
+            writeLine(out, "File deleted successfully");
+
         } else {
-            out.println("Error: File not found or delete failed");
+            writeLine(out, "Error: File not found or delete failed");
         }
     }
 
-    private void put(String[] parts, BufferedReader in, PrintWriter out) throws IOException {
+    private void put(String[] parts, InputStream byteIn, OutputStream byteOut) throws IOException {
         if (parts.length < 2) {
-            out.println("Error: Usage - put <filename>");
+            writeLine(byteOut, "Error: Usage - put <filename>");
             return;
         }
-        File dst = new File(cwd, parts[1]).getCanonicalFile();
-        if (dst.exists()) {
-            System.out.println("File already exists");
+        String filename = parts[1];
+        File destination = new File(cwd, filename).getCanonicalFile();
+
+        if (destination.exists()) {
+            writeLine(byteOut, "File already exists");
             return;
         }
 
-        InputStream inSocket = socket.getInputStream();
-        OutputStream fileOut = new BufferedOutputStream(new FileOutputStream(dst));
-
+        String size = readLine(byteIn);
+        long sizeFile;
+        try {
+            sizeFile = Long.parseLong(size.substring(5));
+        } catch (NumberFormatException e) {
+            writeLine(byteOut, "Invalid size format");
+            return;
+        }
+        writeLine(byteOut, "OK");
+        try (OutputStream fileOut = new BufferedOutputStream(new FileOutputStream(destination))){
             byte[] buf = new byte[8192];
-            int n;
-        while ((n = inSocket.read(buf)) != -1) {
-            fileOut.write(buf, 0, n);
+            long remaining = sizeFile;
+            while (remaining > 0) {
+                int n = byteIn.read(buf, 0, (int) Math.min(buf.length, remaining));
+                if (n == -1) break; 
+                fileOut.write(buf, 0, n);
+                remaining -= n;
             }
             fileOut.flush();
         }
-       
+         writeLine(byteOut,  filename + "Saved successfully");
+        
     }
+
+    // decoding bytes for BufferedInputStream
+    public String readLine(InputStream in) throws IOException {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        int b;
+        while ((b = in.read()) != -1) {
+            if (b == '\n') break; 
+            if (b != '\r') { 
+                buffer.write(b);
+            }
+        }
+        if (buffer.size() == 0 && b == -1) {
+            return null; 
+        }
+        return buffer.toString("UTF-8");
+    }
+
+    // encoding lines for OutputStream
+    private static void writeLine(OutputStream out, String line) throws IOException {
+        out.write((line + "\n").getBytes("UTF-8"));
+        out.flush();
+    }
+
+    
+}
 
 
